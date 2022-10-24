@@ -1,10 +1,10 @@
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 struct Point {
     x: usize,
     y: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 struct Node {
     l: usize,         // left
     r: usize,         // right
@@ -12,12 +12,6 @@ struct Node {
     d: usize,         // down
     c: usize,         // column
     p: Option<Point>, // node position
-}
-
-impl PartialEq for Node {
-    fn eq(&self, other: &Self) -> bool {
-        std::ptr::eq(self, other)
-    }
 }
 
 impl Node {
@@ -33,7 +27,25 @@ impl Node {
     }
 }
 
-#[derive(Debug)]
+impl std::fmt::Display for Node {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(point) = &self.p {
+            write!(
+                f,
+                "L[{}] R[{}] U[{}] D[{}] C[{}] ({}, {})",
+                self.l, self.r, self.u, self.d, self.c, point.x, point.y
+            )
+        } else {
+            write!(
+                f,
+                "L[{}] R[{}] U[{}] D[{}] C[{}] (N/A)",
+                self.l, self.r, self.u, self.d, self.c
+            )
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum DancingLinksError {
     InvalidMatrixSize { expected: usize, got: usize },
     InternalError { msg: String },
@@ -57,8 +69,11 @@ impl std::fmt::Display for DancingLinksError {
 
 impl std::error::Error for DancingLinksError {}
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct DancingLinks {
     grid: Vec<Node>,
+    width: usize,
+    height: usize,
 }
 
 impl std::fmt::Display for DancingLinks {
@@ -67,21 +82,25 @@ impl std::fmt::Display for DancingLinks {
 
         let mut out = String::new();
 
-        for (i, node) in self.grid.iter().enumerate() {
-            if let Some(point) = &node.p {
-                writeln!(
-                    out,
-                    "Node {i} : L[{}] R[{}] U[{}] D[{}] C[{}] ({}, {})",
-                    node.l, node.r, node.u, node.d, node.c, point.x, point.y
-                )
-                .unwrap();
-            } else {
-                writeln!(
-                    out,
-                    "Node {i} : L[{}] R[{}] U[{}] D[{}] C[{}] (N/A)",
-                    node.l, node.r, node.u, node.d, node.c
-                )
-                .unwrap();
+        let grid = &self.grid;
+
+        let mut i = 0;
+        loop {
+            let mut j = i;
+            loop {
+                writeln!(out, "Node {}: {}", j, grid[j]).unwrap();
+
+                j = grid[j].d;
+
+                if i == j {
+                    break;
+                }
+            }
+
+            i = grid[i].r;
+
+            if i == 0 {
+                break;
             }
         }
 
@@ -173,7 +192,11 @@ impl DancingLinks {
             }
 
             if grid.len() == 1 + width + num_ones {
-                let dlx = DancingLinks { grid };
+                let dlx = DancingLinks {
+                    grid,
+                    width,
+                    height,
+                };
 
                 Ok(dlx)
             } else {
@@ -187,5 +210,72 @@ impl DancingLinks {
                 got: matrix.len(),
             })
         }
+    }
+
+    pub fn cover(&mut self, c: usize) {
+        let grid = &mut self.grid;
+
+        // Step 1: Hide column header
+        // L[R[c]] <- L[c]
+        // R[L[c]] <- R[c]
+
+        let r_c = grid[c].r;
+        let l_c = grid[c].l;
+        grid[r_c].l = l_c;
+        grid[l_c].r = r_c;
+
+        // Step 2: Iterate through rows in column (downwards)
+        let mut i = grid[c].d;
+        while i != c {
+            // Step 3: Iterate through cells in row (rightwards)
+            let mut j = grid[i].r;
+            while j != i {
+                // Step 4: Hide cells
+                // U[D[j]] <- U[j]
+                // D[U[j]] <- D[j]
+
+                let d_j = grid[j].d;
+                let u_j = grid[j].u;
+                grid[d_j].u = u_j;
+                grid[u_j].d = d_j;
+
+                j = grid[j].r;
+            }
+
+            i = grid[i].d
+        }
+    }
+
+    pub fn uncover(&mut self, c: usize) {
+        let grid = &mut self.grid;
+
+        // Step 1: Iterate through rows in column (upwards)
+        let mut i = grid[c].u;
+        while i != c {
+            // Step 2: Iterate through cells in row (leftwards)
+            let mut j = grid[i].l;
+            while j != i {
+                // Step 3: Unhide cells
+                // U[D[j]] <- j
+                // D[U[j]] <- j
+
+                let d_j = grid[j].d;
+                let u_j = grid[j].u;
+                grid[d_j].u = j;
+                grid[u_j].d = j;
+
+                j = grid[j].l;
+            }
+
+            i = grid[i].u;
+        }
+        // Step 4: Unhide column
+        // L[R[c]] <- c
+        // R[L[c]] <- c
+
+        let r_c = grid[c].r;
+        let l_c = grid[c].l;
+        grid[r_c].l = c;
+        grid[l_c].r = c;
     }
 }

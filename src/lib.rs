@@ -20,7 +20,19 @@ mod tests {
         // create DLX representation
         let dlx = DancingLinks::new(&matrix, 7, 6)?;
 
+        let mut dlx_clone = dlx.clone();
+
         println!("Output graph:\n{dlx}");
+
+        // hide column A
+        dlx_clone.cover(1);
+
+        println!("Graph after hiding first column:\n{dlx_clone}");
+
+        // unhide column A
+        dlx_clone.uncover(1);
+
+        assert_eq!(dlx, dlx_clone);
 
         Ok(())
     }

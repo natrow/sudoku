@@ -48,7 +48,9 @@ impl std::fmt::Display for Node {
 #[derive(Debug, Clone)]
 pub enum DancingLinksError {
     InvalidMatrixSize { expected: usize, got: usize },
+    InvalidPartialSolution { row: usize },
     InternalError { msg: String },
+    NoSolutions,
 }
 
 impl std::fmt::Display for DancingLinksError {
@@ -60,8 +62,17 @@ impl std::fmt::Display for DancingLinksError {
                     "invalid matrix dimensions, expected {expected} elements, got {got}!"
                 )
             }
+            DancingLinksError::InvalidPartialSolution { row } => {
+                write!(
+                    f,
+                    "invalid partial solution entered: row {row} is part of header!"
+                )
+            }
             DancingLinksError::InternalError { msg } => {
                 write!(f, "internal error occurred: {msg}!")
+            }
+            DancingLinksError::NoSolutions => {
+                write!(f, "no solutions found!")
             }
         }
     }
@@ -109,7 +120,7 @@ impl std::fmt::Display for DancingLinks {
 }
 
 impl DancingLinks {
-    pub fn new(matrix: &Vec<bool>, width: usize, height: usize) -> Result<Self, DancingLinksError> {
+    pub fn new(matrix: &[bool], width: usize, height: usize) -> Result<Self, DancingLinksError> {
         // check that dimensions are valid
         if matrix.len() == width * height {
             // count number of nodes
@@ -212,7 +223,7 @@ impl DancingLinks {
         }
     }
 
-    pub fn cover(&mut self, c: usize) {
+    fn cover(&mut self, c: usize) {
         let grid = &mut self.grid;
 
         // Step 1: Hide column header
@@ -246,7 +257,7 @@ impl DancingLinks {
         }
     }
 
-    pub fn uncover(&mut self, c: usize) {
+    fn uncover(&mut self, c: usize) {
         let grid = &mut self.grid;
 
         // Step 1: Iterate through rows in column (upwards)
@@ -279,16 +290,65 @@ impl DancingLinks {
         grid[l_c].r = c;
     }
 
-    pub fn search(&mut self, k: usize, solution: &mut Vec<usize>) -> bool {
+    fn partial_solve(
+        &mut self,
+        partial_solution: &[usize],
+    ) -> Result<Vec<usize>, DancingLinksError> {
+        let mut partial_solution_nodes = Vec::new();
+
+        for r in partial_solution {
+            // convert row into id
+            let mut id = None;
+            for i in 0..self.grid.len() {
+                if let Some(p) = self.grid[i].p {
+                    if p.y == *r {
+                        id = Some(i);
+                        break;
+                    }
+                }
+            }
+            // try to hide row
+            if let Some(id) = id {
+                if self.grid[id].c == id {
+                    return Err(DancingLinksError::InternalError {
+                        msg: "partial solution found header".to_string(),
+                    });
+                }
+
+                // traverse columns rightwards
+                let mut i = id;
+                loop {
+                    // add node to solution
+                    partial_solution_nodes.push(i);
+
+                    // cover column
+                    self.cover(self.grid[i].c);
+
+                    i = self.grid[i].r;
+
+                    if i == id {
+                        break;
+                    }
+                }
+            } else {
+                return Err(DancingLinksError::InvalidPartialSolution { row: *r });
+            }
+        }
+
+        Ok(partial_solution_nodes)
+    }
+
+    fn search(
+        &mut self,
+        k: usize,
+        solutions: &mut Vec<Vec<usize>>,
+        partial_solution: &mut Vec<usize>,
+    ) {
         // If the matrix A has no columns, the current partial
         // solution is a valid solution; terminate successfully.
         if self.grid[0].r == 0 {
             // algorithm finished
-            println!("Solution found at {k} levels of recursion");
-            for (i, row) in solution.iter().enumerate() {
-                println!("Row {i}: {}", self.grid[*row].p.unwrap().y);
-            }
-            true
+            solutions.push(partial_solution.clone());
         } else {
             // Otherwise choose a column c (deterministically).
             let c = self.grid[0].r;
@@ -298,7 +358,7 @@ impl DancingLinks {
             let mut r = self.grid[c].d;
             while r != c {
                 // add R to the partial solution
-                solution.push(r);
+                partial_solution.push(r);
 
                 // traverse columns rightwards
                 let mut j = self.grid[r].r;
@@ -310,10 +370,10 @@ impl DancingLinks {
                 }
 
                 // search again recursively
-                self.search(k + 1, solution);
+                self.search(k + 1, solutions, partial_solution);
 
                 // give up on solution
-                solution.pop();
+                partial_solution.pop();
 
                 j = self.grid[r].l;
                 while j != r {
@@ -327,8 +387,32 @@ impl DancingLinks {
             }
 
             self.uncover(c);
+        }
+    }
 
-            false
+    pub fn solve(
+        mut self,
+        partial_solution: Option<&[usize]>,
+    ) -> Result<Vec<Vec<usize>>, DancingLinksError> {
+        let mut solutions = Vec::new();
+
+        let mut partial_solution = match partial_solution {
+            Some(partial_solution) => self.partial_solve(partial_solution)?,
+            None => Vec::new(),
+        };
+
+        self.search(0, &mut solutions, &mut partial_solution);
+
+        for solution in solutions.iter_mut() {
+            for node in solution.iter_mut() {
+                *node = self.grid[*node].p.unwrap().y;
+            }
+        }
+
+        if solutions.is_empty() {
+            Err(DancingLinksError::NoSolutions)
+        } else {
+            Ok(solutions)
         }
     }
 }

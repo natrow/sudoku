@@ -1,15 +1,20 @@
+#[macro_use]
+extern crate lazy_static;
+
 pub mod dancing_links;
+pub mod sudoku;
 
 #[cfg(test)]
 mod tests {
-    use crate::dancing_links::*;
+    use crate::dancing_links::DancingLinks;
+    use crate::sudoku::{print_puzzle, solve};
 
     type TestResult = Result<(), Box<dyn std::error::Error>>;
 
     #[test]
     fn dlx_test() -> TestResult {
         // create matrix of boolean values
-        let matrix = [
+        let matrix: Vec<bool> = [
             0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0,
             1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1,
         ]
@@ -20,22 +25,34 @@ mod tests {
         // create DLX representation
         let dlx = DancingLinks::new(&matrix, 7, 6)?;
 
-        let mut dlx_clone = dlx.clone();
+        println!("Encoded DLX:\n{dlx}");
 
-        println!("Output graph:\n{dlx}");
+        let solutions = dlx.solve(None)?;
 
-        // hide column A
-        dlx_clone.cover(1);
+        for solution in solutions {
+            println!("Found solution: {solution:?}");
+        }
 
-        println!("Graph after hiding first column:\n{dlx_clone}");
+        Ok(())
+    }
 
-        // unhide column A
-        dlx_clone.uncover(1);
+    #[test]
+    fn sudoku_test() -> TestResult {
+        // create sudoku puzzle
+        let puzzle = [
+            4, 0, 6, 7, 3, 5, 8, 1, 0, 2, 7, 8, 0, 9, 6, 5, 4, 0, 0, 0, 0, 2, 0, 0, 7, 9, 0, 0, 6,
+            2, 4, 0, 3, 0, 0, 0, 0, 0, 0, 0, 6, 1, 4, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 3,
+            0, 0, 6, 0, 0, 0, 1, 7, 0, 5, 0, 0, 0, 4, 6, 0, 9, 0, 0, 0, 2, 0, 5,
+        ];
 
-        assert_eq!(dlx, dlx_clone);
+        println!("Unsolved puzzle");
+        print_puzzle(&puzzle);
 
-        // solve cover problem
-        dlx_clone.search(0, &mut Vec::new());
+        // solve puzzle
+        let solution = solve(&puzzle)?;
+
+        println!("Solved puzzle");
+        print_puzzle(&solution);
 
         Ok(())
     }

@@ -1,13 +1,22 @@
 #[macro_use]
 extern crate lazy_static;
+use pyo3::prelude::*;
 
 pub mod dancing_links;
-pub mod sudoku;
+pub mod sudoku_alg;
+
+#[pymodule]
+fn sudoku(_py: Python, m: &PyModule) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(sudoku_alg::solve, m)?)?;
+    m.add_function(wrap_pyfunction!(sudoku_alg::print_puzzle, m)?)?;
+
+    Ok(())
+}
 
 #[cfg(test)]
 mod tests {
     use crate::dancing_links::DancingLinks;
-    use crate::sudoku::{print_puzzle, solve};
+    use crate::sudoku_alg::{print_puzzle, solve};
 
     type TestResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -39,20 +48,20 @@ mod tests {
     #[test]
     fn sudoku_test() -> TestResult {
         // create sudoku puzzle
-        let puzzle = [
+        let puzzle = vec![
             4, 0, 6, 7, 3, 5, 8, 1, 0, 2, 7, 8, 0, 9, 6, 5, 4, 0, 0, 0, 0, 2, 0, 0, 7, 9, 0, 0, 6,
             2, 4, 0, 3, 0, 0, 0, 0, 0, 0, 0, 6, 1, 4, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 3,
             0, 0, 6, 0, 0, 0, 1, 7, 0, 5, 0, 0, 0, 4, 6, 0, 9, 0, 0, 0, 2, 0, 5,
         ];
 
         println!("Unsolved puzzle");
-        print_puzzle(&puzzle);
+        print_puzzle(puzzle.clone())?;
 
         // solve puzzle
-        let solution = solve(&puzzle)?;
+        let solution = solve(puzzle)?;
 
         println!("Solved puzzle");
-        print_puzzle(&solution);
+        print_puzzle(Vec::from(solution))?;
 
         Ok(())
     }

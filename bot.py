@@ -1,10 +1,9 @@
 import cv2
-import os
-import shutil
 import pyautogui
 import numpy as np
 import pytesseract
 import math
+import sudoku
 
 # read in data
 sample = 'Screenshot.png'
@@ -44,13 +43,6 @@ out = np.zeros_like(grey_scale)
 out[mask == 255] = grey_scale[mask == 255]
 # cv2.imshow('New Image', out)
 
-# prepare filesystem
-if os.path.exists('out'):
-    shutil.rmtree('out')
-os.mkdir('out')
-os.chdir('out')
-# cv2.imwrite('puzzle.png', out)
-
 # find bounding box
 (x, y, w, h) = cv2.boundingRect(best_cnt)
 
@@ -60,7 +52,7 @@ dH = h // 9
 print(f'Total bounding box: ({x},{y}), ({x+w},{y+w})')
 print(f'Cell dimensions: {dW} x {dH}')
 
-sudoku = np.zeros(81)
+sudoku_puzzle = np.zeros(81).astype(int)
 
 for i in range(0, 9):
     for j in range(0, 9):
@@ -92,9 +84,15 @@ for i in range(0, 9):
 
         # print(f'Cell {i}-{j}: {text}')
 
-        sudoku[i * 9 + j] = int(text)
+        sudoku_puzzle[i * 9 + j] = int(text)
 
-print(sudoku)
+print("Scanned puzzle:")
+sudoku.print_puzzle(sudoku_puzzle)
+
+puzzle_solved = sudoku.solve(sudoku_puzzle)
+
+print("Solved puzzle:")
+sudoku.print_puzzle(puzzle_solved)
 
 cv2.waitKey()
 cv2.destroyAllWindows()

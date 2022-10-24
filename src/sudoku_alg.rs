@@ -1,4 +1,5 @@
-use crate::dancing_links::*;
+use crate::dancing_links::{DancingLinks, Error as DlxError};
+use pyo3::{exceptions::PyTypeError, prelude::*};
 
 // Row-Column | Row-Number | Column-Number | Box-Number
 const WIDTH: usize = 9 * 9 * 4;
@@ -12,40 +13,50 @@ lazy_static! {
 }
 
 #[derive(Debug)]
-pub enum SudokuError {
-    InvalidCell { got: u8 },
-    DancingLinks { inner: DancingLinksError },
+pub enum Error {
+    InvalidGrid { got: usize },
+    InvalidCell { got: usize },
+    DancingLinks { inner: DlxError },
     MultipleSolutions { found: usize },
 }
 
-impl std::fmt::Display for SudokuError {
+impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SudokuError::InvalidCell { got } => {
+            Error::InvalidGrid { got } => {
+                write!(f, "invalid grid length: got {got}, expected 81!")
+            }
+            Error::InvalidCell { got } => {
                 write!(f, "invalid cell: got {got}!")
             }
-            SudokuError::MultipleSolutions { found } => {
+            Error::MultipleSolutions { found } => {
                 write!(f, "multiple solutions found: {found} solutions!")
             }
-            SudokuError::DancingLinks { inner } => {
+            Error::DancingLinks { inner } => {
                 write!(f, "dancing links error: {inner}")
             }
         }
     }
 }
 
-impl std::error::Error for SudokuError {
+impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            SudokuError::DancingLinks { inner } => Some(inner),
+            Error::DancingLinks { inner } => Some(inner),
             _ => None,
         }
     }
 }
 
-impl From<DancingLinksError> for SudokuError {
-    fn from(error: DancingLinksError) -> Self {
-        SudokuError::DancingLinks { inner: error }
+impl From<DlxError> for Error {
+    fn from(error: DlxError) -> Self {
+        Error::DancingLinks { inner: error }
+    }
+}
+
+impl From<Error> for PyErr {
+    fn from(err: Error) -> Self {
+        PyErr::new::<PyTypeError, _>(err.to_string())
     }
 }
 
@@ -75,7 +86,7 @@ fn create_matrix() -> Vec<bool> {
     matrix
 }
 
-fn decode_solution(solution: &[usize]) -> [u8; 81] {
+fn decode_solution(solution: &[usize]) -> [usize; 81] {
     let mut puzzle = [0; 81];
 
     for i in solution {
@@ -83,13 +94,13 @@ fn decode_solution(solution: &[usize]) -> [u8; 81] {
         let c = (i / 9) % 9;
         let n = i % 9;
 
-        puzzle[r * 9 + c] = (n + 1) as u8;
+        puzzle[r * 9 + c] = n + 1;
     }
 
     puzzle
 }
 
-fn encode_puzzle(puzzle: &[u8; 81]) -> Result<Vec<usize>, SudokuError> {
+fn encode_puzzle(puzzle: &[usize]) -> Result<Vec<usize>, Error> {
     let mut partial_solution = Vec::new();
 
     for r in 0..9 {
@@ -99,9 +110,9 @@ fn encode_puzzle(puzzle: &[u8; 81]) -> Result<Vec<usize>, SudokuError> {
             match n {
                 0 => {}
                 1..=9 => {
-                    partial_solution.push(r * 81 + c * 9 + (n - 1) as usize);
+                    partial_solution.push(r * 81 + c * 9 + n - 1);
                 }
-                x => return Err(SudokuError::InvalidCell { got: x }),
+                x => return Err(Error::InvalidCell { got: x }),
             }
         }
     }
@@ -109,20 +120,30 @@ fn encode_puzzle(puzzle: &[u8; 81]) -> Result<Vec<usize>, SudokuError> {
     Ok(partial_solution)
 }
 
-pub fn solve(puzzle: &[u8; 81]) -> Result<[u8; 81], SudokuError> {
+#[pyfunction]
+pub fn solve(puzzle: Vec<usize>) -> Result<[usize; 81], Error> {
+    if puzzle.len() != 81 {
+        return Err(Error::InvalidGrid { got: puzzle.len() });
+    }
+
     let dlx = DancingLinks::new(&MATRIX[..], WIDTH, HEIGHT)?;
 
-    let partial_solution = encode_puzzle(puzzle)?;
+    let partial_solution = encode_puzzle(&puzzle)?;
 
     let solutions = dlx.solve(Some(&partial_solution[..]))?;
 
     match solutions.len() {
         1 => Ok(decode_solution(&solutions[0][..])),
-        n => Err(SudokuError::MultipleSolutions { found: n }),
+        n => Err(Error::MultipleSolutions { found: n }),
     }
 }
 
-pub fn print_puzzle(puzzle: &[u8; 81]) {
+#[pyfunction]
+pub fn print_puzzle(puzzle: Vec<usize>) -> Result<(), Error> {
+    if puzzle.len() != 81 {
+        return Err(Error::InvalidGrid { got: puzzle.len() });
+    }
+
     for row in 0..9 {
         for col in 0..9 {
             match puzzle[row * 9 + col] {
@@ -142,4 +163,6 @@ pub fn print_puzzle(puzzle: &[u8; 81]) {
             println!("------+-------+------");
         }
     }
+
+    Ok(())
 }

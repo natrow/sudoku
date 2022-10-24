@@ -46,39 +46,39 @@ impl std::fmt::Display for Node {
 }
 
 #[derive(Debug, Clone)]
-pub enum DancingLinksError {
+pub enum Error {
     InvalidMatrixSize { expected: usize, got: usize },
     InvalidPartialSolution { row: usize },
     InternalError { msg: String },
     NoSolutions,
 }
 
-impl std::fmt::Display for DancingLinksError {
+impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            DancingLinksError::InvalidMatrixSize { expected, got } => {
+            Error::InvalidMatrixSize { expected, got } => {
                 write!(
                     f,
                     "invalid matrix dimensions, expected {expected} elements, got {got}!"
                 )
             }
-            DancingLinksError::InvalidPartialSolution { row } => {
+            Error::InvalidPartialSolution { row } => {
                 write!(
                     f,
                     "invalid partial solution entered: row {row} is part of header!"
                 )
             }
-            DancingLinksError::InternalError { msg } => {
+            Error::InternalError { msg } => {
                 write!(f, "internal error occurred: {msg}!")
             }
-            DancingLinksError::NoSolutions => {
+            Error::NoSolutions => {
                 write!(f, "no solutions found!")
             }
         }
     }
 }
 
-impl std::error::Error for DancingLinksError {}
+impl std::error::Error for Error {}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DancingLinks {
@@ -120,7 +120,7 @@ impl std::fmt::Display for DancingLinks {
 }
 
 impl DancingLinks {
-    pub fn new(matrix: &[bool], width: usize, height: usize) -> Result<Self, DancingLinksError> {
+    pub fn new(matrix: &[bool], width: usize, height: usize) -> Result<Self, Error> {
         // check that dimensions are valid
         if matrix.len() == width * height {
             // count number of nodes
@@ -193,7 +193,7 @@ impl DancingLinks {
                                 grid[row_end].r = row_id;
                                 grid[row_id].l = row_end;
                             } else {
-                                return Err(DancingLinksError::InternalError {
+                                return Err(Error::InternalError {
                                     msg: "couldn't find end of row".to_owned(),
                                 });
                             }
@@ -211,12 +211,12 @@ impl DancingLinks {
 
                 Ok(dlx)
             } else {
-                Err(DancingLinksError::InternalError {
+                Err(Error::InternalError {
                     msg: "incorrect grid length".to_owned(),
                 })
             }
         } else {
-            Err(DancingLinksError::InvalidMatrixSize {
+            Err(Error::InvalidMatrixSize {
                 expected: width * height,
                 got: matrix.len(),
             })
@@ -290,10 +290,7 @@ impl DancingLinks {
         grid[l_c].r = c;
     }
 
-    fn partial_solve(
-        &mut self,
-        partial_solution: &[usize],
-    ) -> Result<Vec<usize>, DancingLinksError> {
+    fn partial_solve(&mut self, partial_solution: &[usize]) -> Result<Vec<usize>, Error> {
         let mut partial_solution_nodes = Vec::new();
 
         for r in partial_solution {
@@ -310,7 +307,7 @@ impl DancingLinks {
             // try to hide row
             if let Some(id) = id {
                 if self.grid[id].c == id {
-                    return Err(DancingLinksError::InternalError {
+                    return Err(Error::InternalError {
                         msg: "partial solution found header".to_string(),
                     });
                 }
@@ -331,7 +328,7 @@ impl DancingLinks {
                     }
                 }
             } else {
-                return Err(DancingLinksError::InvalidPartialSolution { row: *r });
+                return Err(Error::InvalidPartialSolution { row: *r });
             }
         }
 
@@ -390,10 +387,7 @@ impl DancingLinks {
         }
     }
 
-    pub fn solve(
-        mut self,
-        partial_solution: Option<&[usize]>,
-    ) -> Result<Vec<Vec<usize>>, DancingLinksError> {
+    pub fn solve(mut self, partial_solution: Option<&[usize]>) -> Result<Vec<Vec<usize>>, Error> {
         let mut solutions = Vec::new();
 
         let mut partial_solution = match partial_solution {
@@ -410,7 +404,7 @@ impl DancingLinks {
         }
 
         if solutions.is_empty() {
-            Err(DancingLinksError::NoSolutions)
+            Err(Error::NoSolutions)
         } else {
             Ok(solutions)
         }

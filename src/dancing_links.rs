@@ -278,4 +278,57 @@ impl DancingLinks {
         grid[r_c].l = c;
         grid[l_c].r = c;
     }
+
+    pub fn search(&mut self, k: usize, solution: &mut Vec<usize>) -> bool {
+        // If the matrix A has no columns, the current partial
+        // solution is a valid solution; terminate successfully.
+        if self.grid[0].r == 0 {
+            // algorithm finished
+            println!("Solution found at {k} levels of recursion");
+            for (i, row) in solution.iter().enumerate() {
+                println!("Row {i}: {}", self.grid[*row].p.unwrap().y);
+            }
+            true
+        } else {
+            // Otherwise choose a column c (deterministically).
+            let c = self.grid[0].r;
+            self.cover(c);
+
+            // Choose a row r such that Ar, c = 1 (nondeterministically).
+            let mut r = self.grid[c].d;
+            while r != c {
+                // add R to the partial solution
+                solution.push(r);
+
+                // traverse columns rightwards
+                let mut j = self.grid[r].r;
+                while j != r {
+                    // cover column j
+                    self.cover(self.grid[j].c);
+
+                    j = self.grid[j].r;
+                }
+
+                // search again recursively
+                self.search(k + 1, solution);
+
+                // give up on solution
+                solution.pop();
+
+                j = self.grid[r].l;
+                while j != r {
+                    // uncover column j
+                    self.uncover(self.grid[j].c);
+
+                    j = self.grid[j].l;
+                }
+
+                r = self.grid[r].d;
+            }
+
+            self.uncover(c);
+
+            false
+        }
+    }
 }

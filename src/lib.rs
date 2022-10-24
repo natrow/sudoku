@@ -34,6 +34,9 @@ mod tests {
 
         assert_eq!(dlx, dlx_clone);
 
+        // solve cover problem
+        dlx_clone.search(0, &mut Vec::new());
+
         Ok(())
     }
 }

@@ -19,13 +19,19 @@ struct Point {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
+enum Data {
+    Point(Point),
+    Size(usize),
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
 struct Node {
-    l: usize,         // left
-    r: usize,         // right
-    u: usize,         // up
-    d: usize,         // down
-    c: usize,         // column
-    p: Option<Point>, // node position
+    l: usize, // left
+    r: usize, // right
+    u: usize, // up
+    d: usize, // down
+    c: usize, // column
+    x: Data,  // extended data
 }
 
 impl Node {
@@ -36,25 +42,31 @@ impl Node {
             u: id,
             d: id,
             c: id,
-            p,
+            x: match p {
+                Some(p) => Data::Point(p),
+                None => Data::Size(0),
+            },
         }
     }
 }
 
 impl std::fmt::Display for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(point) = &self.p {
-            write!(
-                f,
-                "L[{}] R[{}] U[{}] D[{}] C[{}] ({}, {})",
-                self.l, self.r, self.u, self.d, self.c, point.x, point.y
-            )
-        } else {
-            write!(
-                f,
-                "L[{}] R[{}] U[{}] D[{}] C[{}] (N/A)",
-                self.l, self.r, self.u, self.d, self.c
-            )
+        match self.x {
+            Data::Point(p) => {
+                write!(
+                    f,
+                    "L[{}] R[{}] U[{}] D[{}] C[{}] ({}, {})",
+                    self.l, self.r, self.u, self.d, self.c, p.x, p.y
+                )
+            }
+            Data::Size(s) => {
+                write!(
+                    f,
+                    "L[{}] R[{}] U[{}] D[{}] C[{}] S[{}]",
+                    self.l, self.r, self.u, self.d, self.c, s
+                )
+            }
         }
     }
 }
@@ -179,10 +191,20 @@ impl DancingLinks {
                         grid[row_id].u = trow_id;
                         trow_id = row_id;
 
+                        // increase column size
+                        match grid[col_id].x {
+                            Data::Size(ref mut c) => *c += 1,
+                            Data::Point(_) => {
+                                return Err(Error::InternalError {
+                                    msg: "found row object as column header".to_string(),
+                                })
+                            }
+                        }
+
                         // knit into start of row
                         let mut row_start: Option<usize> = None;
                         for (cell_id, cell) in grid.iter().enumerate() {
-                            if let Some(point) = &cell.p {
+                            if let Data::Point(point) = &cell.x {
                                 if point.y == j && point.x != i {
                                     row_start = Some(cell_id);
                                     break;
@@ -196,7 +218,7 @@ impl DancingLinks {
                             // knit into end of row
                             let mut row_end: Option<usize> = None;
                             for (cell_id, cell) in grid.iter().enumerate().rev() {
-                                if let Some(point) = &cell.p {
+                                if let Data::Point(point) = &cell.x {
                                     if point.y == j && point.x != i && cell_id >= row_start {
                                         row_end = Some(cell_id);
                                         break;
@@ -237,7 +259,7 @@ impl DancingLinks {
         }
     }
 
-    fn cover(&mut self, c: usize) {
+    fn cover(&mut self, c: usize) -> Result<(), Error> {
         let grid = &mut self.grid;
 
         // Step 1: Hide column header
@@ -264,14 +286,27 @@ impl DancingLinks {
                 grid[d_j].u = u_j;
                 grid[u_j].d = d_j;
 
+                // Step 5: Decrement column size
+                let c_j = grid[j].c;
+                match grid[c_j].x {
+                    Data::Size(ref mut s) => *s -= 1,
+                    Data::Point(_) => {
+                        return Err(Error::InternalError {
+                            msg: "found row in headers while covering".to_string(),
+                        })
+                    }
+                }
+
                 j = grid[j].r;
             }
 
             i = grid[i].d
         }
+
+        Ok(())
     }
 
-    fn uncover(&mut self, c: usize) {
+    fn uncover(&mut self, c: usize) -> Result<(), Error> {
         let grid = &mut self.grid;
 
         // Step 1: Iterate through rows in column (upwards)
@@ -280,7 +315,18 @@ impl DancingLinks {
             // Step 2: Iterate through cells in row (leftwards)
             let mut j = grid[i].l;
             while j != i {
-                // Step 3: Unhide cells
+                // Step 3: Increment column size
+                let c_j = grid[j].c;
+                match grid[c_j].x {
+                    Data::Size(ref mut s) => *s += 1,
+                    Data::Point(_) => {
+                        return Err(Error::InternalError {
+                            msg: "found row in headers while uncovering".to_string(),
+                        })
+                    }
+                }
+
+                // Step 4: Unhide cells
                 // U[D[j]] <- j
                 // D[U[j]] <- j
 
@@ -294,7 +340,7 @@ impl DancingLinks {
 
             i = grid[i].u;
         }
-        // Step 4: Unhide column
+        // Step 5: Unhide column
         // L[R[c]] <- c
         // R[L[c]] <- c
 
@@ -302,6 +348,8 @@ impl DancingLinks {
         let l_c = grid[c].l;
         grid[r_c].l = c;
         grid[l_c].r = c;
+
+        Ok(())
     }
 
     fn partial_solve(&mut self, partial_solution: &[usize]) -> Result<Vec<usize>, Error> {
@@ -311,7 +359,7 @@ impl DancingLinks {
             // convert row into id
             let mut id = None;
             for i in 0..self.grid.len() {
-                if let Some(p) = self.grid[i].p {
+                if let Data::Point(p) = self.grid[i].x {
                     if p.y == *r {
                         id = Some(i);
                         break;
@@ -354,7 +402,7 @@ impl DancingLinks {
         k: usize,
         solutions: &mut Vec<Vec<usize>>,
         partial_solution: &mut Vec<usize>,
-    ) {
+    ) -> Result<(), Error> {
         // If the matrix A has no columns, the current partial
         // solution is a valid solution; terminate successfully.
         if self.grid[0].r == 0 {
@@ -362,8 +410,28 @@ impl DancingLinks {
             solutions.push(partial_solution.clone());
         } else {
             // Otherwise choose a column c (deterministically).
-            let c = self.grid[0].r;
-            self.cover(c);
+            let mut c = self.grid[0].r;
+            let mut s = usize::MAX;
+            let mut nc = c;
+            while nc != 0 {
+                let ns = match self.grid[c].x {
+                    Data::Size(s) => s,
+                    Data::Point(_) => {
+                        return Err(Error::InternalError {
+                            msg: "found column object while traversing headers".to_string(),
+                        });
+                    }
+                };
+
+                if ns < s {
+                    s = ns;
+                    c = nc;
+                }
+
+                nc = self.grid[nc].r;
+            }
+
+            self.cover(c)?;
 
             // Choose a row r such that Ar, c = 1 (nondeterministically).
             let mut r = self.grid[c].d;
@@ -375,13 +443,13 @@ impl DancingLinks {
                 let mut j = self.grid[r].r;
                 while j != r {
                     // cover column j
-                    self.cover(self.grid[j].c);
+                    self.cover(self.grid[j].c)?;
 
                     j = self.grid[j].r;
                 }
 
                 // search again recursively
-                self.search(k + 1, solutions, partial_solution);
+                self.search(k + 1, solutions, partial_solution)?;
 
                 // give up on solution
                 partial_solution.pop();
@@ -389,7 +457,7 @@ impl DancingLinks {
                 j = self.grid[r].l;
                 while j != r {
                     // uncover column j
-                    self.uncover(self.grid[j].c);
+                    self.uncover(self.grid[j].c)?;
 
                     j = self.grid[j].l;
                 }
@@ -397,8 +465,10 @@ impl DancingLinks {
                 r = self.grid[r].d;
             }
 
-            self.uncover(c);
+            self.uncover(c)?;
         }
+
+        Ok(())
     }
 
     pub fn solve(mut self, partial_solution: Option<&[usize]>) -> Result<Vec<Vec<usize>>, Error> {
@@ -409,11 +479,20 @@ impl DancingLinks {
             None => Vec::new(),
         };
 
-        self.search(0, &mut solutions, &mut partial_solution);
+        self.search(0, &mut solutions, &mut partial_solution)?;
 
         for solution in solutions.iter_mut() {
             for node in solution.iter_mut() {
-                *node = self.grid[*node].p.unwrap().y;
+                match self.grid[*node].x {
+                    Data::Point(p) => {
+                        *node = p.x;
+                    }
+                    Data::Size(_) => {
+                        return Err(Error::InternalError {
+                            msg: "found column object in solution".to_owned(),
+                        });
+                    }
+                }
             }
         }
 

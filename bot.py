@@ -20,6 +20,8 @@ import os
 import sudoku
 import time
 
+start_time = time.time()
+
 # hardcoded offsets for board position on screen
 offset_x = 300
 offset_y = 342
@@ -42,7 +44,11 @@ gui.hotkey('win', '1')
 
 # start new game
 gui.click(1024, 379, duration=0.1)
-gui.click(948, 873, duration=0.1)
+# gui.click(930, 649, duration=0.1) # easy
+# gui.click(930, 700, duration=0.1) # medium
+# gui.click(930, 766, duration=0.1) # hard
+# gui.click(930, 815, duration=0.1) # expert
+gui.click(930, 875, duration=0.1)  # evil
 time.sleep(1)
 
 # take a screenshot
@@ -50,6 +56,9 @@ gui.screenshot('Screenshot.png', region=(offset_x, offset_y, width, height))
 
 # load screenshot into OpenCV
 img = cv2.imread(screenshot_name)
+
+print(f'Time to read screenshot: {time.time() - start_time}')
+start_time = time.time()
 
 # preprocess image
 img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -64,6 +73,9 @@ largest_contour = contours[contour_areas.index(max(contour_areas))]
 (x, y, w, h) = cv2.boundingRect(largest_contour)
 dW = w // 9
 dH = h // 9
+
+print(f'Time to process image: {time.time() - start_time}')
+start_time = time.time()
 
 # use OCR to fill in puzzle
 unsolved_puzzle = np.zeros(81).astype(int)
@@ -86,8 +98,14 @@ for i in range(0, 9):
         # save cell to puzzle
         unsolved_puzzle[i * 9 + j] = int(text)
 
+print(f'Time to extract OCR: {time.time() - start_time}')
+start_time = time.time()
+
 # solve sudoku puzzle
 solved_puzzle = sudoku.solve(unsolved_puzzle)
+
+print(f'Time to solve puzzle: {time.time() - start_time}')
+start_time = time.time()
 
 # fill in puzzle
 for i in range(0, 9):
@@ -101,6 +119,8 @@ for i in range(0, 9):
             gui.click(x1, y1)
             # enter key
             gui.press(str(solved_puzzle[i * 9 + j]))
+
+print(f'Time to input answers: {time.time() - start_time}')
 
 # stop recording
 # time.sleep(1.0)

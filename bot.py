@@ -1,98 +1,93 @@
-import cv2
-import pyautogui
+import pyautogui as gui
 import numpy as np
-import pytesseract
-import math
+import pytesseract as tess
+import cv2
+import os
 import sudoku
+import time
 
-# read in data
-sample = 'Screenshot.png'
-read_image = cv2.imread(sample)
-# cv2.imshow('Input Screenshot', read_image)
+# hardcoded offsets for board position on screen
+offset_x = 300
+offset_y = 342
+
+width = 550
+height = 550
+
+# screenshot name
+screenshot_name = 'Screenshot.png'
+
+# clear old screenshots
+if os.path.exists(screenshot_name):
+    os.remove(screenshot_name)
+
+# switch windows
+gui.hotkey('win', '1')
+
+# start recording
+# gui.hotkey('win', 'r')
+
+# start new game
+gui.click(1024, 379, duration=0.1)
+gui.click(948, 873, duration=0.1)
+time.sleep(1)
+
+# take a screenshot
+gui.screenshot('Screenshot.png', region=(offset_x, offset_y, width, height))
+
+# load screenshot into OpenCV
+img = cv2.imread(screenshot_name)
 
 # preprocess image
-grey_scale = cv2.cvtColor(read_image, cv2.COLOR_BGR2GRAY)
-thresh1 = cv2.adaptiveThreshold(
-    grey_scale, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
-# cv2.imshow('Preprocessor', thresh1)
+img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+thresh = cv2.adaptiveThreshold(
+    img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
 
-# find contours
-contours1, _ = cv2.findContours(
-    thresh1, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-max_area = 0
-c = 0
-for i in contours1:
-    area = cv2.contourArea(i)
-    if area > 1000:
-        if area > max_area:
-            max_area = area
-            best_cnt = i
-            # read_image = cv2.drawContours(
-            #     read_image, contours1, c, (0, 255, 0), 3)
-    c += 1
-# cv2.imshow('Found Contours', read_image)
-
-# create a mask
-mask = np.zeros((grey_scale.shape), np.uint8)
-cv2.drawContours(mask, [best_cnt], 0, 255, -1)
-cv2.drawContours(mask, [best_cnt], 0, 0, 2)
-# cv2.imshow('Mask', mask)
-
-# crop image to mask
-out = np.zeros_like(grey_scale)
-out[mask == 255] = grey_scale[mask == 255]
-# cv2.imshow('New Image', out)
-
-# find bounding box
-(x, y, w, h) = cv2.boundingRect(best_cnt)
-
+# find puzzle bounds
+contours, _ = cv2.findContours(
+    thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+contour_areas = list(map(cv2.contourArea, contours))
+largest_contour = contours[contour_areas.index(max(contour_areas))]
+(x, y, w, h) = cv2.boundingRect(largest_contour)
 dW = w // 9
 dH = h // 9
 
-print(f'Total bounding box: ({x},{y}), ({x+w},{y+w})')
-print(f'Cell dimensions: {dW} x {dH}')
-
-sudoku_puzzle = np.zeros(81).astype(int)
-
+# use OCR to fill in puzzle
+unsolved_puzzle = np.zeros(81).astype(int)
 for i in range(0, 9):
     for j in range(0, 9):
-        x1 = x + (dW * j)
-        x2 = x1 + dW
-        y1 = y + (dH * i)
-        y2 = y1 + dH
+        # calculate cell bounds (3px border trimmed)
+        x1 = x + (dW * j) + 3
+        x2 = x1 + dW - 6
+        y1 = y + (dH * i) + 3
+        y2 = y1 + dH - 6
+        cell = thresh[y1:y2, x1:x2]
 
-        im_gray = out[y1:y2, x1:x2]
-
-        # print(f'Bounding box for cell {i}-{j}: ({x1},{y1}), ({x2},{y2})')
-        # cv2.imwrite(f'cell-{i}-{j}.png', im_gray)
-
-        # process image
-        _, cell_bin = cv2.threshold(
-            im_gray, 130, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-        # Fill everything that is the same colour (black) as top-left corner with white
-        cv2.floodFill(cell_bin, None, (0, 0), 255)
-        cv2.floodFill(cell_bin, None, (1, 1), 255)
-
-        # cv2.imwrite(f'cell-proc-{i}-{j}.png', cell_bin)
-
-        if np.mean(cell_bin) > 250:
+        # if cell isn't empty use OCR
+        if np.max(cell) < 200:
             text = '0'
         else:
-            text = pytesseract.image_to_string(
-                cell_bin, config='--psm 10 -c tessedit_char_whitelist=123456789').strip()
+            text = tess.image_to_string(
+                cell, config='--psm 10 -c tessedit_char_whitelist=123456789').strip()
 
-        # print(f'Cell {i}-{j}: {text}')
+        # save cell to puzzle
+        unsolved_puzzle[i * 9 + j] = int(text)
 
-        sudoku_puzzle[i * 9 + j] = int(text)
+# solve sudoku puzzle
+solved_puzzle = sudoku.solve(unsolved_puzzle)
 
-print("Scanned puzzle:")
-sudoku.print_puzzle(sudoku_puzzle)
+# fill in puzzle
+for i in range(0, 9):
+    for j in range(0, 9):
+        # calculate center of cell
+        x1 = x + dW * (j + 0.5) + offset_x
+        y1 = y + dH * (i + 0.5) + offset_y
 
-puzzle_solved = sudoku.solve(sudoku_puzzle)
+        if unsolved_puzzle[i * 9 + j] == 0:
+            # click on cell
+            gui.click(x1, y1)
+            # enter key
+            gui.press(str(solved_puzzle[i * 9 + j]))
 
-print("Solved puzzle:")
-sudoku.print_puzzle(puzzle_solved)
-
-cv2.waitKey()
-cv2.destroyAllWindows()
+# stop recording
+# time.sleep(1.0)
+# gui.hotkey('win', 'r')

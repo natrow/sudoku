@@ -22,6 +22,7 @@ struct Point {
 enum Data {
     Point(Point),
     Size(usize),
+    Root,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -35,17 +36,14 @@ struct Node {
 }
 
 impl Node {
-    fn new(id: usize, p: Option<Point>) -> Self {
+    fn new(id: usize, x: Data) -> Self {
         Self {
             l: id,
             r: id,
             u: id,
             d: id,
             c: id,
-            x: match p {
-                Some(p) => Data::Point(p),
-                None => Data::Size(0),
-            },
+            x,
         }
     }
 }
@@ -65,6 +63,13 @@ impl std::fmt::Display for Node {
                     f,
                     "L[{}] R[{}] U[{}] D[{}] C[{}] S[{}]",
                     self.l, self.r, self.u, self.d, self.c, s
+                )
+            }
+            Data::Root => {
+                write!(
+                    f,
+                    "L[{}] R[{}] U[{}] D[{}] C[{}] (root)",
+                    self.l, self.r, self.u, self.d, self.c
                 )
             }
         }
@@ -157,13 +162,13 @@ impl DancingLinks {
 
             // create root node
             let root_id = grid.len();
-            grid.push(Node::new(root_id, None));
+            grid.push(Node::new(root_id, Data::Root));
 
             // create column nodes
             let mut rcol_id = root_id;
             for i in 0..width {
                 let col_id = grid.len();
-                grid.push(Node::new(col_id, None));
+                grid.push(Node::new(col_id, Data::Size(0)));
 
                 // knit into row
                 grid[root_id].l = col_id;
@@ -179,7 +184,7 @@ impl DancingLinks {
                     if matrix[j * width + i] {
                         // create node at coordinate point
                         let row_id = grid.len();
-                        grid.push(Node::new(row_id, Some(Point { x: i, y: j })));
+                        grid.push(Node::new(row_id, Data::Point(Point { x: i, y: j })));
 
                         // attach column id
                         grid[row_id].c = col_id;
@@ -194,9 +199,9 @@ impl DancingLinks {
                         // increase column size
                         match grid[col_id].x {
                             Data::Size(ref mut c) => *c += 1,
-                            Data::Point(_) => {
+                            _ => {
                                 return Err(Error::InternalError {
-                                    msg: "found row object as column header".to_string(),
+                                    msg: "row object has invalid column header".to_string(),
                                 })
                             }
                         }
@@ -290,9 +295,9 @@ impl DancingLinks {
                 let c_j = grid[j].c;
                 match grid[c_j].x {
                     Data::Size(ref mut s) => *s -= 1,
-                    Data::Point(_) => {
+                    _ => {
                         return Err(Error::InternalError {
-                            msg: "found row in headers while covering".to_string(),
+                            msg: "tried covering non-column object".to_string(),
                         })
                     }
                 }
@@ -319,9 +324,9 @@ impl DancingLinks {
                 let c_j = grid[j].c;
                 match grid[c_j].x {
                     Data::Size(ref mut s) => *s += 1,
-                    Data::Point(_) => {
+                    _ => {
                         return Err(Error::InternalError {
-                            msg: "found row in headers while uncovering".to_string(),
+                            msg: "tried uncovering non-column object".to_string(),
                         })
                     }
                 }
@@ -381,7 +386,7 @@ impl DancingLinks {
                     partial_solution_nodes.push(i);
 
                     // cover column
-                    self.cover(self.grid[i].c);
+                    self.cover(self.grid[i].c)?;
 
                     i = self.grid[i].r;
 
@@ -416,9 +421,10 @@ impl DancingLinks {
             while nc != 0 {
                 let ns = match self.grid[c].x {
                     Data::Size(s) => s,
-                    Data::Point(_) => {
+                    _ => {
                         return Err(Error::InternalError {
-                            msg: "found column object while traversing headers".to_string(),
+                            msg: "traversed non-column object while calculating minimum"
+                                .to_string(),
                         });
                     }
                 };
@@ -485,11 +491,11 @@ impl DancingLinks {
             for node in solution.iter_mut() {
                 match self.grid[*node].x {
                     Data::Point(p) => {
-                        *node = p.x;
+                        *node = p.y;
                     }
-                    Data::Size(_) => {
+                    _ => {
                         return Err(Error::InternalError {
-                            msg: "found column object in solution".to_owned(),
+                            msg: "found non-row object in solution".to_owned(),
                         });
                     }
                 }

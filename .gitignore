@@ -2,3 +2,5 @@
 /Cargo.lock
 /out
 .venv
+Screenshot*.png
+/Screenshot.png
